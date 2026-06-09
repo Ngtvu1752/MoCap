@@ -5,18 +5,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import numpy as np
-
-
-def _load_cv2() -> Any:
-    try:
-        import cv2
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "OpenCV is required for video reading. Install dependencies with "
-            "`pip install -r requirements.txt`."
-        ) from exc
-    return cv2
-
+import cv2
 
 @dataclass(frozen=True)
 class VideoMetadata:
@@ -40,7 +29,6 @@ class VideoReader:
 
     def __init__(self, video_path: Path | str) -> None:
         self.video_path = Path(video_path)
-        self._cv2: Any | None = None
         self._capture: Any | None = None
 
     def __enter__(self) -> "VideoReader":
@@ -54,8 +42,7 @@ class VideoReader:
         if not self.video_path.exists():
             raise FileNotFoundError(f"Video does not exist: {self.video_path}")
 
-        self._cv2 = _load_cv2()
-        capture = self._cv2.VideoCapture(str(self.video_path))
+        capture = cv2.VideoCapture(str(self.video_path))
         if not capture.isOpened():
             raise ValueError(f"Cannot open video: {self.video_path}")
 
@@ -69,7 +56,6 @@ class VideoReader:
     @property
     def metadata(self) -> VideoMetadata:
         capture = self._require_capture()
-        cv2 = self._require_cv2()
         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = float(capture.get(cv2.CAP_PROP_FPS))
         duration = frame_count / fps if fps > 0 else 0.0
@@ -85,7 +71,6 @@ class VideoReader:
 
     def iter_frames(self) -> Iterator[VideoFrame]:
         capture = self._require_capture()
-        cv2 = self._require_cv2()
         fps = float(capture.get(cv2.CAP_PROP_FPS))
         index = 0
 
@@ -102,8 +87,3 @@ class VideoReader:
         if self._capture is None:
             raise RuntimeError("VideoReader is not open. Use `with VideoReader(...)` or call open().")
         return self._capture
-
-    def _require_cv2(self) -> Any:
-        if self._cv2 is None:
-            raise RuntimeError("VideoReader has not loaded OpenCV yet.")
-        return self._cv2
