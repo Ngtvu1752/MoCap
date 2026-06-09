@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import cv2
 import argparse
 from pathlib import Path
 
-from src.io.video_reader import VideoReader, _load_cv2
-
+from src.io.video_reader import VideoReader
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract frames from a video")
@@ -28,7 +28,6 @@ def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    cv2 = _load_cv2()
     saved = 0
     with VideoReader(args.video) as reader:
         for frame in reader.iter_frames():

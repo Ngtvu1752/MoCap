@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 
 import numpy as np
 
 
-class KeypointFormat(StrEnum):
+class KeypointFormat(str, Enum):
     RTMPOSE_RAW = "rtmpose_raw"
     HUMAN36M_17 = "human36m_17"
 

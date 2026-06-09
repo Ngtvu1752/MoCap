@@ -17,6 +17,7 @@ class PipelineConfig:
     video_path: Path
     output_dir: Path = Path("output")
     metadata_only: bool = False
+    pose2d_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,9 @@ class MocapPipeline:
         pose2d = np.stack(pose2d_sequence, axis=0)
         pose2d_path = self.config.output_dir / "pose2d.npy"
         np.save(pose2d_path, pose2d)
+
+        if self.config.pose2d_only:
+            return PipelineResult(metadata=metadata, pose2d_path=pose2d_path)
 
         model_pose2d = self.pose_converter.convert(pose2d)
         pose3d_result = self.pose3d_estimator.lift(model_pose2d)
