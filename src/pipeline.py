@@ -18,6 +18,7 @@ class PipelineConfig:
     output_dir: Path = Path("output")
     metadata_only: bool = False
     pose2d_only: bool = False
+    pose3d_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class PipelineResult:
     metadata: VideoMetadata
     pose2d_path: Path | None = None
     pose3d_path: Path | None = None
+    skeleton_video_path: Path | None = None
     mesh_video_path: Path | None = None
 
     def summary(self) -> str:
@@ -40,8 +42,10 @@ class PipelineResult:
             lines.append(f"2D pose: {self.pose2d_path}")
         if self.pose3d_path is not None:
             lines.append(f"3D pose: {self.pose3d_path}")
+        if self.skeleton_video_path is not None:
+            lines.append(f"Skeleton video: {self.skeleton_video_path}")
         if self.mesh_video_path is not None:
-            lines.append(f"Rendered video: {self.mesh_video_path}")
+            lines.append(f"Tube-mesh video: {self.mesh_video_path}")
 
         return "\n".join(lines)
 
@@ -86,12 +90,23 @@ class MocapPipeline:
         pose3d_path = self.config.output_dir / "pose3d.npy"
         np.save(pose3d_path, pose3d_result.keypoints)
 
-        mesh_video_path = self.config.output_dir / "mesh.mp4"
-        self.renderer.render(pose3d_result.keypoints, mesh_video_path, metadata.fps)
+        if self.config.pose3d_only:
+            return PipelineResult(
+                metadata=metadata,
+                pose2d_path=pose2d_path,
+                pose3d_path=pose3d_path,
+            )
+
+        render_result = self.renderer.render(
+            pose3d_result.keypoints,
+            self.config.output_dir / "mesh.mp4",
+            metadata.fps,
+        )
 
         return PipelineResult(
             metadata=metadata,
             pose2d_path=pose2d_path,
             pose3d_path=pose3d_path,
-            mesh_video_path=mesh_video_path,
+            skeleton_video_path=render_result.skeleton_video_path,
+            mesh_video_path=render_result.mesh_video_path,
         )
