@@ -8,9 +8,9 @@ import numpy as np
 from src.pose2d.base import Pose2DEstimator, Pose2DResult
 
 
-DEFAULT_CONFIG_PATH = Path("checkpoints/rtmpose-m_8xb64-270e_coco-wholebody-256x192.py")
+DEFAULT_CONFIG_PATH = Path("/workspace/MoCap/checkpoints/body_2d_keypoint/rtmpose-m_8xb512-700e_body8-halpe26-384x288.py")
 DEFAULT_CHECKPOINT_PATH = Path(
-    "checkpoints/rtmpose-m_simcc-coco-wholebody_pt-aic-coco_270e-256x192-cd5e845c_20230123.pth"
+    "/workspace/MoCap/checkpoints/body_2d_keypoint/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-384x288-89e6428b_20230605.pth"
 )
 
 

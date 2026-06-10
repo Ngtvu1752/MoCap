@@ -30,6 +30,12 @@ def parse_args() -> argparse.Namespace:
         help="Run RTMPose and save pose2d.npy, then stop before 3D lifting.",
     )
     parser.add_argument(
+        "--pose2d-format",
+        choices=["whole_body133", "coco_body17", "halpe26"],
+        default="whole_body133",
+        help="RTMPose keypoint layout emitted by the 2D model",
+    )
+    parser.add_argument(
         "--pose2d-config",
         type=Path,
         default=Path("checkpoints/rtmpose-m_8xb64-270e_coco-wholebody-256x192.py"),
@@ -91,7 +97,7 @@ def main() -> None:
             device=args.device,
         ),
         pose_converter=Pose2DFormatConverter(
-            source_format=KeypointFormat.RTMPOSE_RAW,
+            source_format=KeypointFormat(args.pose2d_format),
             target_format=KeypointFormat.HUMAN36M_17,
         ),
         pose3d_estimator=MotionBERTEstimator(

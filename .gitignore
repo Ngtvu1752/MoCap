@@ -1,4 +1,3 @@
-/input
 /output
 /venv
 __pycache__/
@@ -19,4 +18,4 @@ __pycache__/
 *.zip
 *.tar.gz
 *.egg-info/
-/checkpoints
+/MotionBERT

@@ -13,7 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Lift RTMPose 2D keypoints to 3D with MotionBERT")
     parser.add_argument("--input", type=Path, default=Path("output/pose2d.npy"), help="Input pose2d .npy")
     parser.add_argument("--output", type=Path, default=Path("output/pose3d.npy"), help="Output pose3d .npy")
-    parser.add_argument("--input-format", choices=["rtmpose_raw", "human36m_17"], default="rtmpose_raw")
+    parser.add_argument("--input-format", choices=["rtmpose_raw", "whole_body133", "coco_body17", "halpe26", "human36m_17"], default="rtmpose_raw")
     parser.add_argument("--motionbert-repo", type=Path, default=Path("MotionBERT"))
     parser.add_argument("--config", type=Path, default=Path("MotionBERT/configs/pose3d/MB_ft_h36m_global_lite.yaml"))
     parser.add_argument(
@@ -29,8 +29,9 @@ def main() -> None:
     args = parse_args()
     pose2d = np.load(args.input)
 
-    if args.input_format == "rtmpose_raw":
-        converter = Pose2DFormatConverter(KeypointFormat.RTMPOSE_RAW, KeypointFormat.HUMAN36M_17)
+    if args.input_format != "human36m_17":
+        source_format = KeypointFormat.RTMPOSE_RAW if args.input_format == "rtmpose_raw" else KeypointFormat(args.input_format)
+        converter = Pose2DFormatConverter(source_format, KeypointFormat.HUMAN36M_17)
         pose2d = converter.convert(pose2d)
 
     estimator = MotionBERTEstimator(
