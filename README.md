@@ -18,13 +18,14 @@ input video (.mp4)
 
 ## Output
 
-Mac dinh output nam trong `output/`:
+Mac dinh moi video se co mot folder con trong `output/`, vi du `output/dance/`:
 
 ```text
-output/pose2d.npy        # raw RTMPose output, shape (T,K,2)
-output/pose3d.npy        # MotionBERT output, shape (T,17,3)
-output/skeleton3d.mp4    # 3D skeleton render
-output/tube_mesh.mp4     # tube/stick mesh render from 17 joints
+output/dance/metadata.json     # video, pipeline, model config/checkpoint/device metadata
+output/dance/pose2d.npy        # raw RTMPose output, shape (T,K,2)
+output/dance/pose3d.npy        # MotionBERT output, shape (T,17,3)
+output/dance/skeleton3d.mp4    # 3D skeleton render
+output/dance/tube_mesh.mp4     # tube/stick mesh render from 17 joints
 ```
 
 Luu y: `tube_mesh.mp4` khong phai full body surface mesh/SMPL mesh. No la mesh dang ong duoc ve tu 17 joints va bones.
@@ -123,7 +124,7 @@ Check shape:
 ```bash
 python - <<'CHECK_SHAPE'
 import numpy as np
-x = np.load('output/pose2d.npy')
+x = np.load('output/dance/pose2d.npy')
 print(x.shape, x.dtype)
 CHECK_SHAPE
 ```
@@ -141,9 +142,9 @@ For WholeBody 133 pose2d:
 
 ```bash
 python lift_pose3d.py \
-  --input output/pose2d.npy \
+  --input output/dance/pose2d.npy \
   --input-format whole_body133 \
-  --output output/pose3d.npy \
+  --output output/dance/pose3d.npy \
   --device cuda:0
 ```
 
@@ -151,25 +152,25 @@ For Halpe26 pose2d:
 
 ```bash
 python lift_pose3d.py \
-  --input output/pose2d.npy \
+  --input output/dance/pose2d.npy \
   --input-format halpe26 \
-  --output output/pose3d.npy \
+  --output output/dance/pose3d.npy \
   --device cuda:0
 ```
 
 Expected:
 
 ```text
-output/pose3d.npy shape: (T,17,3)
+output/dance/pose3d.npy shape: (T,17,3)
 ```
 
 ### 4. Run Phase 4 only: render pose3d.npy
 
 ```bash
 python render_pose3d.py \
-  --input output/pose3d.npy \
-  --skeleton-output output/skeleton3d.mp4 \
-  --mesh-output output/tube_mesh.mp4 \
+  --input output/dance/pose3d.npy \
+  --skeleton-output output/dance/skeleton3d.mp4 \
+  --mesh-output output/dance/tube_mesh.mp4 \
   --fps 60 \
   --mode both
 ```
@@ -177,13 +178,13 @@ python render_pose3d.py \
 Render only skeleton:
 
 ```bash
-python render_pose3d.py --input output/pose3d.npy --mode skeleton
+python render_pose3d.py --input output/dance/pose3d.npy --mode skeleton
 ```
 
 Render only tube mesh:
 
 ```bash
-python render_pose3d.py --input output/pose3d.npy --mode mesh
+python render_pose3d.py --input output/dance/pose3d.npy --mode mesh
 ```
 
 ### 5. Run full pipeline

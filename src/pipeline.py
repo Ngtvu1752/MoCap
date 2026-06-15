@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -9,7 +11,7 @@ from src.io.video_reader import VideoMetadata, VideoReader
 from src.pose2d.base import Pose2DEstimator
 from src.pose3d.adapters import Pose2DFormatConverter
 from src.pose3d.base import Pose3DEstimator
-from src.renderer.base import PoseRenderer
+from src.renderer.base import PoseRenderer, RenderResult
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,7 @@ class PipelineConfig:
 @dataclass(frozen=True)
 class PipelineResult:
     metadata: VideoMetadata
+    metadata_path: Path | None = None
     pose2d_path: Path | None = None
     pose3d_path: Path | None = None
     skeleton_video_path: Path | None = None
@@ -38,6 +41,8 @@ class PipelineResult:
             f"Duration: {self.metadata.duration_seconds:.2f}s",
         ]
 
+        if self.metadata_path is not None:
+            lines.append(f"Metadata: {self.metadata_path}")
         if self.pose2d_path is not None:
             lines.append(f"2D pose: {self.pose2d_path}")
         if self.pose3d_path is not None:
@@ -66,47 +71,140 @@ class MocapPipeline:
         self.renderer = renderer
 
     def run(self) -> PipelineResult:
-        self.config.output_dir.mkdir(parents=True, exist_ok=True)
+        run_output_dir = self._run_output_dir()
+        run_output_dir.mkdir(parents=True, exist_ok=True)
 
         with VideoReader(self.config.video_path) as reader:
             metadata = reader.metadata
             if self.config.metadata_only:
-                return PipelineResult(metadata=metadata)
+                metadata_path = self._write_metadata(run_output_dir, metadata, stage="metadata_only")
+                return PipelineResult(metadata=metadata, metadata_path=metadata_path)
 
             pose2d_sequence = []
+            pose2d_metadata: dict[str, Any] | None = None
             for frame in reader.iter_frames():
                 result = self.pose2d_estimator.estimate_frame(frame.image, frame.index)
                 pose2d_sequence.append(result.keypoints)
+                if pose2d_metadata is None:
+                    pose2d_metadata = result.metadata
 
         pose2d = np.stack(pose2d_sequence, axis=0)
-        pose2d_path = self.config.output_dir / "pose2d.npy"
+        pose2d_path = run_output_dir / "pose2d.npy"
         np.save(pose2d_path, pose2d)
 
         if self.config.pose2d_only:
-            return PipelineResult(metadata=metadata, pose2d_path=pose2d_path)
+            metadata_path = self._write_metadata(
+                run_output_dir,
+                metadata,
+                stage="pose2d_only",
+                pose2d_path=pose2d_path,
+                pose2d_metadata=pose2d_metadata,
+            )
+            return PipelineResult(metadata=metadata, metadata_path=metadata_path, pose2d_path=pose2d_path)
 
         model_pose2d = self.pose_converter.convert(pose2d)
         pose3d_result = self.pose3d_estimator.lift(model_pose2d)
-        pose3d_path = self.config.output_dir / "pose3d.npy"
+        pose3d_path = run_output_dir / "pose3d.npy"
         np.save(pose3d_path, pose3d_result.keypoints)
 
         if self.config.pose3d_only:
+            metadata_path = self._write_metadata(
+                run_output_dir,
+                metadata,
+                stage="pose3d_only",
+                pose2d_path=pose2d_path,
+                pose3d_path=pose3d_path,
+                pose2d_metadata=pose2d_metadata,
+                pose3d_metadata=pose3d_result.metadata,
+            )
             return PipelineResult(
                 metadata=metadata,
+                metadata_path=metadata_path,
                 pose2d_path=pose2d_path,
                 pose3d_path=pose3d_path,
             )
 
         render_result = self.renderer.render(
             pose3d_result.keypoints,
-            self.config.output_dir / "mesh.mp4",
+            run_output_dir / "mesh.mp4",
             metadata.fps,
+        )
+        metadata_path = self._write_metadata(
+            run_output_dir,
+            metadata,
+            stage="complete",
+            pose2d_path=pose2d_path,
+            pose3d_path=pose3d_path,
+            render_result=render_result,
+            pose2d_metadata=pose2d_metadata,
+            pose3d_metadata=pose3d_result.metadata,
         )
 
         return PipelineResult(
             metadata=metadata,
+            metadata_path=metadata_path,
             pose2d_path=pose2d_path,
             pose3d_path=pose3d_path,
             skeleton_video_path=render_result.skeleton_video_path,
             mesh_video_path=render_result.mesh_video_path,
         )
+
+    def _run_output_dir(self) -> Path:
+        return self.config.output_dir / self.config.video_path.stem
+
+    def _write_metadata(
+        self,
+        output_dir: Path,
+        video_metadata: VideoMetadata,
+        stage: str,
+        pose2d_path: Path | None = None,
+        pose3d_path: Path | None = None,
+        render_result: RenderResult | None = None,
+        pose2d_metadata: dict[str, Any] | None = None,
+        pose3d_metadata: dict[str, Any] | None = None,
+    ) -> Path:
+        metadata_path = output_dir / "metadata.json"
+        outputs: dict[str, str] = {"metadata": str(metadata_path)}
+        if pose2d_path is not None:
+            outputs["pose2d"] = str(pose2d_path)
+        if pose3d_path is not None:
+            outputs["pose3d"] = str(pose3d_path)
+        if render_result is not None:
+            outputs["skeleton_video"] = str(render_result.skeleton_video_path)
+            outputs["tube_mesh_video"] = str(render_result.mesh_video_path)
+
+        payload = {
+            "video": {
+                "path": str(video_metadata.path),
+                "width": video_metadata.width,
+                "height": video_metadata.height,
+                "fps": video_metadata.fps,
+                "frame_count": video_metadata.frame_count,
+                "duration_seconds": video_metadata.duration_seconds,
+            },
+            "pipeline": {
+                "stage": stage,
+                "output_dir": str(output_dir),
+                "metadata_only": self.config.metadata_only,
+                "pose2d_only": self.config.pose2d_only,
+                "pose3d_only": self.config.pose3d_only,
+            },
+            "outputs": outputs,
+            "pose2d": self._json_safe(pose2d_metadata or {}),
+            "pose3d": self._json_safe(pose3d_metadata or {}),
+        }
+        metadata_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return metadata_path
+
+    def _json_safe(self, value: Any) -> Any:
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, dict):
+            return {str(key): self._json_safe(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [self._json_safe(item) for item in value]
+        return value
