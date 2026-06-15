@@ -1,6 +1,6 @@
 # MoCap Demo: Video to 3D Skeleton Pipeline
 
-Demo pipeline chuyen video mot nguoi thanh chuoi 2D pose, 3D pose va video render skeleton/tube mesh.
+Demo pipeline chuyen video mot nguoi thanh chuoi 2D pose, 3D pose va video render skeleton and optional SMPL human mesh.
 
 Pipeline hien tai:
 
@@ -13,7 +13,7 @@ input video (.mp4)
 -> MotionBERT 2D-to-3D lifting
 -> pose3d.npy
 -> 3D renderer
--> skeleton3d.mp4 + tube_mesh.mp4
+-> skeleton3d.mp4
 ```
 
 ## Output
@@ -21,14 +21,18 @@ input video (.mp4)
 Mac dinh moi video se co mot folder con trong `output/`, vi du `output/dance/`:
 
 ```text
-output/dance/metadata.json     # video, pipeline, model config/checkpoint/device metadata
-output/dance/pose2d.npy        # raw RTMPose output, shape (T,K,2)
-output/dance/pose3d.npy        # MotionBERT output, shape (T,17,3)
-output/dance/skeleton3d.mp4    # 3D skeleton render
-output/dance/tube_mesh.mp4     # tube/stick mesh render from 17 joints
+output/dance/metadata.json       # video, pipeline, model config/checkpoint/device metadata
+output/dance/pose2d.npy          # raw RTMPose output, shape (T,K,2)
+output/dance/pose2d_scores.npy   # RTMPose keypoint confidence scores, shape (T,K)
+output/dance/pose3d.npy          # MotionBERT output, shape (T,17,3)
+output/dance/skeleton3d.mp4      # 3D skeleton render
+output/dance/smpl_vertices.npy   # optional HMR output, shape (T,6890,3)
+output/dance/smpl_joints3d.npy   # optional HMR regressed H36M joints, shape (T,17,3)
+output/dance/smpl_theta.npy      # optional HMR SMPL params, shape (T,82)
+output/dance/human_mesh.mp4      # optional HMR rendered SMPL mesh video
 ```
 
-Luu y: `tube_mesh.mp4` khong phai full body surface mesh/SMPL mesh. No la mesh dang ong duoc ve tu 17 joints va bones.
+Luu y: full body mesh/SMPL render chi duoc tao khi bat `--human-mesh`, output la `human_mesh.mp4`.
 
 ## Supported 2D Keypoint Formats
 
@@ -50,28 +54,59 @@ Tat ca deu duoc convert sang MotionBERT/Human3.6M 17 joints:
 14 RShoulder, 15 RElbow, 16 RWrist
 ```
 
-## Checkpoints Expected
+## Checkpoints And Model Assets Expected
 
-RTMPose WholeBody 133 default:
+Dat cac checkpoint/model asset theo dung duong dan ben duoi de chay pipeline khong can truyen path tuy bien.
+
+### RTMPose WholeBody 133
+
+Dung cho `--pose2d-format whole_body133` mac dinh:
 
 ```text
 checkpoints/rtmpose-m_8xb64-270e_coco-wholebody-256x192.py
 checkpoints/rtmpose-m_simcc-coco-wholebody_pt-aic-coco_270e-256x192-cd5e845c_20230123.pth
 ```
 
-RTMPose Body Halpe26:
+### RTMPose Body Halpe26
+
+Khuyen dung khi chay Human Mesh Recovery vi MotionBERT mesh branch duoc thiet ke quanh Halpe26 -> H36M17 conversion:
 
 ```text
 checkpoints/body_2d_keypoint/rtmpose-m_8xb512-700e_body8-halpe26-384x288.py
 checkpoints/body_2d_keypoint/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-384x288-89e6428b_20230605.pth
 ```
 
-MotionBERT:
+### MotionBERT Pose3D
+
+Dung cho buoc 2D-to-3D skeleton lifting, tao `pose3d.npy`:
 
 ```text
 MotionBERT/
+MotionBERT/configs/pose3d/MB_ft_h36m_global_lite.yaml
 checkpoints/MotionBERT/FT_MB_lite_MB_ft_h36m_global_lite/best_epoch.bin
 ```
+
+### MotionBERT Human Mesh Recovery
+
+Dung khi bat `--human-mesh`, tao `smpl_vertices.npy`, `smpl_theta.npy`, `human_mesh.mp4`:
+
+```text
+MotionBERT/configs/mesh/MB_ft_pw3d.yaml
+checkpoints/MotionBERT/FT_MB_release_MB_ft_pw3d/best_epoch.bin
+```
+
+### SMPL Mesh Assets
+
+MotionBERT HMR can day du cac file nay trong cung mot thu muc `--smpl-data-root`, mac dinh la `checkpoints/Mesh`:
+
+```text
+checkpoints/Mesh/SMPL_NEUTRAL.pkl
+checkpoints/Mesh/J_regressor_h36m_correct.npy
+checkpoints/Mesh/J_regressor_extra.npy
+checkpoints/Mesh/smpl_mean_params.npz
+```
+
+`SMPL_NEUTRAL.pkl` la model SMPL neutral body. Ba file con lai la asset phu tro ma MotionBERT mesh head can de khoi tao mean pose/shape va regress H36M joints tu SMPL vertices.
 
 ## Install Notes
 
@@ -170,21 +205,13 @@ output/dance/pose3d.npy shape: (T,17,3)
 python render_pose3d.py \
   --input output/dance/pose3d.npy \
   --skeleton-output output/dance/skeleton3d.mp4 \
-  --mesh-output output/dance/tube_mesh.mp4 \
-  --fps 60 \
-  --mode both
+  --fps 60
 ```
 
-Render only skeleton:
+Render skeleton:
 
 ```bash
-python render_pose3d.py --input output/dance/pose3d.npy --mode skeleton
-```
-
-Render only tube mesh:
-
-```bash
-python render_pose3d.py --input output/dance/pose3d.npy --mode mesh
+python render_pose3d.py --input output/dance/pose3d.npy --skeleton-output output/dance/skeleton3d.mp4
 ```
 
 ### 5. Run full pipeline
@@ -213,6 +240,20 @@ Run up to Phase 3 only, without rendering:
 python main.py input/dance.mp4 --pose3d-only --device cuda:0
 ```
 
+Run full pipeline with Human Mesh Recovery, Halpe26 recommended:
+
+```bash
+python main.py input/dance.mp4 \
+  --pose2d-format halpe26 \
+  --pose2d-config checkpoints/body_2d_keypoint/rtmpose-m_8xb512-700e_body8-halpe26-384x288.py \
+  --pose2d-checkpoint checkpoints/body_2d_keypoint/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-384x288-89e6428b_20230605.pth \
+  --human-mesh \
+  --mesh-config MotionBERT/configs/mesh/MB_ft_pw3d.yaml \
+  --mesh-checkpoint checkpoints/MotionBERT/FT_MB_release_MB_ft_pw3d/best_epoch.bin \
+  --smpl-data-root checkpoints/Mesh \
+  --device cuda:0
+```
+
 ## Device
 
 `--device cuda:0` dung GPU NVIDIA so 0 cho RTMPose va MotionBERT.
@@ -235,5 +276,5 @@ src/io/video_reader.py        # video metadata/frame reader
 src/pose2d/rtmpose_estimator.py
 src/pose3d/adapters.py        # keypoint format conversion
 src/pose3d/motionbert_estimator.py
-src/renderer/mesh_renderer.py # skeleton/tube mesh renderer
+src/renderer/mesh_renderer.py # skeleton and optional SMPL human mesh renderer
 ```

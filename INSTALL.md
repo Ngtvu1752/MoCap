@@ -193,9 +193,7 @@ Render 3D pose:
 python render_pose3d.py \
   --input output/dance/pose3d.npy \
   --skeleton-output output/dance/skeleton3d.mp4 \
-  --mesh-output output/dance/tube_mesh.mp4 \
-  --fps 60 \
-  --mode both
+  --fps 60
 ```
 
 Run full pipeline:
@@ -206,8 +204,30 @@ python main.py input/dance.mp4 \
   --device cuda:0
 ```
 
+Run full pipeline with Human Mesh Recovery, Halpe26 recommended:
+
+```bash
+python main.py input/dance.mp4 \
+  --pose2d-format halpe26 \
+  --pose2d-config checkpoints/body_2d_keypoint/rtmpose-m_8xb512-700e_body8-halpe26-384x288.py \
+  --pose2d-checkpoint checkpoints/body_2d_keypoint/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-384x288-89e6428b_20230605.pth \
+  --human-mesh \
+  --mesh-config MotionBERT/configs/mesh/MB_ft_pw3d.yaml \
+  --mesh-checkpoint checkpoints/MotionBERT/FT_MB_release_MB_ft_pw3d/best_epoch.bin \
+  --smpl-data-root checkpoints/Mesh \
+  --device cuda:0
+```
+
+HMR outputs:
+
+```text
+output/dance/smpl_vertices.npy
+output/dance/smpl_joints3d.npy
+output/dance/smpl_theta.npy
+output/dance/human_mesh.mp4
+```
+
 ## Notes
 
-- `tube_mesh.mp4` la tube/stick mesh tu 17 joints, khong phai full SMPL body mesh.
 - `PoseMambaEstimator` hien chi la placeholder. Pipeline thuc te dang dung MotionBERT.
 - Neu may khong co GPU hoac CUDA khong san sang, co the thu `--device cpu`, nhung Phase 2/3 se cham hon nhieu.

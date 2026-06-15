@@ -10,7 +10,6 @@ import numpy as np
 @dataclass(frozen=True)
 class RenderResult:
     skeleton_video_path: Path
-    mesh_video_path: Path
 
 
 class PoseRenderer(ABC):

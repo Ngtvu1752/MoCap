@@ -8,7 +8,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 from src.renderer.base import PoseRenderer, RenderResult
 
@@ -26,7 +25,6 @@ RIGHT_BONES = {(0, 1), (1, 2), (2, 3), (8, 14), (14, 15), (15, 16)}
 MID_COLOR = "#1f77b4"
 LEFT_COLOR = "#2ca02c"
 RIGHT_COLOR = "#d62728"
-MESH_COLOR = "#2f6f9f"
 
 
 @dataclass(frozen=True)
@@ -35,7 +33,6 @@ class RenderStyle:
     height: int = 900
     dpi: int = 100
     skeleton_line_width: float = 3.0
-    mesh_line_width: float = 10.0
     marker_size: float = 24.0
     elev: float = 12.0
     azim: float = 80.0
@@ -43,7 +40,7 @@ class RenderStyle:
 
 
 class SkeletonRenderer(PoseRenderer):
-    """Render Human3.6M 17-joint 3D motion as skeleton and tube-like mesh videos."""
+    """Render Human3.6M 17-joint 3D motion as a skeleton video."""
 
     def __init__(self, style: RenderStyle | None = None) -> None:
         self.style = style or RenderStyle()
@@ -51,22 +48,11 @@ class SkeletonRenderer(PoseRenderer):
     def render(self, pose3d: np.ndarray, output_path: Path, fps: float) -> RenderResult:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        pose3d = self._validate_pose3d(pose3d)
         skeleton_path = output_path.with_name("skeleton3d.mp4")
-        mesh_path = output_path.with_name("tube_mesh.mp4")
-
         self.render_skeleton(pose3d, skeleton_path, fps=fps)
-        self.render_mesh(pose3d, mesh_path, fps=fps)
-        return RenderResult(skeleton_video_path=skeleton_path, mesh_video_path=mesh_path)
+        return RenderResult(skeleton_video_path=skeleton_path)
 
     def render_skeleton(self, pose3d: np.ndarray, output_path: Path, fps: float = 30.0) -> Path:
-        return self._render_video(pose3d, output_path, fps=fps, mode="skeleton")
-
-    def render_mesh(self, pose3d: np.ndarray, output_path: Path, fps: float = 30.0) -> Path:
-        return self._render_video(pose3d, output_path, fps=fps, mode="mesh")
-
-    def _render_video(self, pose3d: np.ndarray, output_path: Path, fps: float, mode: str) -> Path:
         pose3d = self._validate_pose3d(pose3d)
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,14 +69,13 @@ class SkeletonRenderer(PoseRenderer):
 
         try:
             for frame in pose3d:
-                image = self._draw_frame(frame, limits=limits, mode=mode)
-                writer.write(image)
+                writer.write(self._draw_frame(frame, limits=limits))
         finally:
             writer.release()
 
         return output_path
 
-    def _draw_frame(self, joints: np.ndarray, limits: tuple[tuple[float, float], ...], mode: str) -> np.ndarray:
+    def _draw_frame(self, joints: np.ndarray, limits: tuple[tuple[float, float], ...]) -> np.ndarray:
         fig = plt.figure(
             figsize=(self.style.width / self.style.dpi, self.style.height / self.style.dpi),
             dpi=self.style.dpi,
@@ -100,12 +85,7 @@ class SkeletonRenderer(PoseRenderer):
         ax.set_facecolor("white")
 
         self._setup_axes(ax, limits)
-        if mode == "skeleton":
-            self._draw_skeleton(ax, joints)
-        elif mode == "mesh":
-            self._draw_tube_mesh(ax, joints)
-        else:
-            raise ValueError(f"Unknown render mode: {mode}")
+        self._draw_skeleton(ax, joints)
 
         fig.canvas.draw()
         rgba = np.asarray(fig.canvas.buffer_rgba())
@@ -137,26 +117,6 @@ class SkeletonRenderer(PoseRenderer):
             ax.plot(xs, ys, zs, color=color, lw=self.style.skeleton_line_width)
         xs, ys, zs = self._vis_points(joints)
         ax.scatter(xs, ys, zs, s=self.style.marker_size, c="#ffffff", edgecolors="#1f2933", linewidths=1.2)
-
-    def _draw_tube_mesh(self, ax, joints: np.ndarray) -> None:
-        segments = []
-        colors = []
-        for bone in H36M_BONES:
-            a, b = bone
-            p = np.column_stack(self._vis_points(joints[[a, b]]))
-            segments.append(p)
-            colors.append(MESH_COLOR)
-        collection = Line3DCollection(
-            segments,
-            colors=colors,
-            linewidths=self.style.mesh_line_width,
-            alpha=0.86,
-            capstyle="round",
-            joinstyle="round",
-        )
-        ax.add_collection3d(collection)
-        xs, ys, zs = self._vis_points(joints)
-        ax.scatter(xs, ys, zs, s=self.style.marker_size * 1.35, c="#f8fbff", edgecolors=MESH_COLOR, linewidths=1.3)
 
     def _bone_color(self, bone: tuple[int, int]) -> str:
         if bone in LEFT_BONES:
