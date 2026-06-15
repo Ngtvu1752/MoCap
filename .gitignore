@@ -19,3 +19,5 @@ __pycache__/
 *.tar.gz
 *.egg-info/
 /MotionBERT
+/checkpoints
+/input
