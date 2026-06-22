@@ -109,6 +109,16 @@ def parse_args() -> argparse.Namespace:
         help="Optional override for MotionBERT mesh clip length.",
     )
     parser.add_argument(
+        "--mesh-clip-stride",
+        type=int,
+        default=None,
+        help=(
+            "Number of overlapping frames between adjacent MotionBERT mesh clips. "
+            "For example, with --mesh-clip-len 243 and --mesh-clip-stride 121, "
+            "adjacent clips start 122 frames apart."
+        ),
+    )
+    parser.add_argument(
         "--device",
         default="cuda:0",
         help="Inference device, for example cuda:0 or cpu",
@@ -131,6 +141,7 @@ def main() -> None:
             source_format=pose2d_format,
             device=args.device,
             clip_len=args.mesh_clip_len,
+            clip_stride=args.mesh_clip_stride,
         )
         if not args.skip_human_mesh_render:
             human_mesh_renderer = SMPLMeshRenderer()

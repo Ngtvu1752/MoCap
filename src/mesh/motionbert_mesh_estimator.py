@@ -28,6 +28,7 @@ class MotionBERTMeshEstimator(HumanMeshEstimator):
         source_format: KeypointFormat = KeypointFormat.HALPE26,
         device: str = "cuda:0",
         clip_len: int | None = None,
+        clip_stride: int | None = None,
     ) -> None:
         self.repo_path = Path(repo_path)
         self.config_path = Path(config_path)
@@ -36,6 +37,7 @@ class MotionBERTMeshEstimator(HumanMeshEstimator):
         self.source_format = KeypointFormat(source_format)
         self.device = device
         self.clip_len = clip_len
+        self.clip_stride = clip_stride
 
         self._torch: Any | None = None
         self._args: Any | None = None
@@ -56,22 +58,15 @@ class MotionBERTMeshEstimator(HumanMeshEstimator):
         motion = self._to_h36m_with_confidence(pose2d, scores)
         motion = self._crop_scale(motion, scale_range=[1, 1]).astype(np.float32)
 
-        clip_len = self.clip_len or int(self._args.clip_len)
-        vertices = []
-        joints3d = []
-        theta = []
-
-        with self._torch.no_grad():
-            for clip in self._iter_clips(motion, clip_len):
-                batch_input = self._torch.from_numpy(clip[None]).to(self._device()).float()
-                output = self._predict(batch_input)
-                vertices.append(output["verts"])
-                joints3d.append(output["kp_3d"])
-                theta.append(output["theta"])
-
-        vertices_np = np.concatenate(vertices, axis=0).astype(np.float32)
-        joints3d_np = np.concatenate(joints3d, axis=0).astype(np.float32)
-        theta_np = np.concatenate(theta, axis=0).astype(np.float32)
+        clip_len = self._resolve_clip_len()
+        clip_overlap = self._resolve_clip_overlap(clip_len)
+        clip_step = clip_len - clip_overlap
+        vertices_np, joints3d_np, theta_np = self._recover_overlapping(
+            motion,
+            clip_len=clip_len,
+            clip_overlap=clip_overlap,
+            clip_step=clip_step,
+        )
 
         return MeshResult(
             vertices=vertices_np,
@@ -87,11 +82,118 @@ class MotionBERTMeshEstimator(HumanMeshEstimator):
                 "source_format": self.source_format.value,
                 "device": str(self._device()),
                 "clip_len": clip_len,
+                "clip_overlap": clip_overlap,
+                "clip_step": clip_step,
                 "input_space": "motionbert_crop_scaled_h36m17_with_confidence",
                 "vertices_shape": list(vertices_np.shape),
                 "theta_shape": list(theta_np.shape),
             },
         )
+
+    def _resolve_clip_len(self) -> int:
+        clip_len = self.clip_len or int(self._args.clip_len)
+        if clip_len <= 0:
+            raise ValueError(f"Expected positive mesh clip length, got {clip_len}.")
+
+        maxlen = int(getattr(self._args, "maxlen", clip_len))
+        if clip_len > maxlen:
+            raise ValueError(
+                f"mesh clip length {clip_len} exceeds MotionBERT maxlen {maxlen}. "
+                "Use --mesh-clip-len less than or equal to the mesh config maxlen."
+            )
+        return clip_len
+
+    def _resolve_clip_overlap(self, clip_len: int) -> int:
+        if self.clip_stride is None:
+            return 0
+        clip_overlap = int(self.clip_stride)
+        if clip_overlap < 0:
+            raise ValueError(f"Expected non-negative mesh clip overlap, got {clip_overlap}.")
+        if clip_overlap >= clip_len:
+            raise ValueError(
+                f"Expected mesh clip overlap to be smaller than clip length. "
+                f"Got overlap={clip_overlap}, clip_len={clip_len}."
+            )
+        return clip_overlap
+
+    def _recover_overlapping(
+        self,
+        motion: np.ndarray,
+        *,
+        clip_len: int,
+        clip_overlap: int,
+        clip_step: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        frame_count = int(motion.shape[0])
+        vertices_acc: np.ndarray | None = None
+        joints3d_acc: np.ndarray | None = None
+        theta_acc: np.ndarray | None = None
+        weight_acc = np.zeros(frame_count, dtype=np.float32)
+
+        with self._torch.no_grad():
+            for start, clip in self._iter_clips(motion, clip_len, clip_step):
+                batch_input = self._torch.from_numpy(clip[None]).to(self._device()).float()
+                output = self._predict(batch_input)
+                clip_frames = int(clip.shape[0])
+                weights = self._clip_blend_weights(
+                    clip_frames,
+                    start=start,
+                    frame_count=frame_count,
+                    clip_overlap=clip_overlap,
+                )
+
+                if vertices_acc is None:
+                    vertices_acc = np.zeros((frame_count, *output["verts"].shape[1:]), dtype=np.float32)
+                    joints3d_acc = np.zeros((frame_count, *output["kp_3d"].shape[1:]), dtype=np.float32)
+                    theta_acc = np.zeros((frame_count, *output["theta"].shape[1:]), dtype=np.float32)
+
+                self._accumulate_weighted(vertices_acc, output["verts"], start, weights)
+                self._accumulate_weighted(joints3d_acc, output["kp_3d"], start, weights)
+                self._accumulate_weighted(theta_acc, output["theta"], start, weights)
+                weight_acc[start : start + clip_frames] += weights
+
+        if vertices_acc is None or joints3d_acc is None or theta_acc is None:
+            raise RuntimeError("MotionBERT mesh recovery did not produce any clips.")
+        if np.any(weight_acc <= 0):
+            missing = np.where(weight_acc <= 0)[0]
+            raise RuntimeError(f"Mesh clip blending left {len(missing)} frame(s) without predictions.")
+
+        return (
+            self._normalize_weighted(vertices_acc, weight_acc),
+            self._normalize_weighted(joints3d_acc, weight_acc),
+            self._normalize_weighted(theta_acc, weight_acc),
+        )
+
+    def _accumulate_weighted(self, accumulator: np.ndarray, values: np.ndarray, start: int, weights: np.ndarray) -> None:
+        end = start + values.shape[0]
+        weight_shape = (weights.shape[0],) + (1,) * (values.ndim - 1)
+        accumulator[start:end] += values.astype(np.float32) * weights.reshape(weight_shape)
+
+    def _normalize_weighted(self, accumulator: np.ndarray, weights: np.ndarray) -> np.ndarray:
+        weight_shape = (weights.shape[0],) + (1,) * (accumulator.ndim - 1)
+        return (accumulator / weights.reshape(weight_shape)).astype(np.float32)
+
+    def _clip_blend_weights(
+        self,
+        clip_frames: int,
+        *,
+        start: int,
+        frame_count: int,
+        clip_overlap: int,
+    ) -> np.ndarray:
+        weights = np.ones(clip_frames, dtype=np.float32)
+        if clip_overlap <= 0 or clip_frames <= 1:
+            return weights
+
+        head = min(clip_overlap, clip_frames)
+        if start > 0:
+            weights[:head] *= np.linspace(0.0, 1.0, head, endpoint=False, dtype=np.float32)
+
+        tail = min(clip_overlap, clip_frames)
+        if start + clip_frames < frame_count:
+            weights[-tail:] *= np.linspace(1.0, 0.0, tail, endpoint=False, dtype=np.float32)
+
+        return weights
 
     def _ensure_model_loaded(self) -> None:
         if self._model is not None:
@@ -323,9 +425,13 @@ class MotionBERTMeshEstimator(HumanMeshEstimator):
             if not path.exists():
                 raise FileNotFoundError(f"Required SMPL mesh asset does not exist: {path}")
 
-    def _iter_clips(self, motion: np.ndarray, clip_len: int):
-        for start in range(0, len(motion), clip_len):
-            yield motion[start : start + clip_len]
+    def _iter_clips(self, motion: np.ndarray, clip_len: int, clip_step: int):
+        frame_count = len(motion)
+        for start in range(0, frame_count, clip_step):
+            end = min(start + clip_len, frame_count)
+            yield start, motion[start:end]
+            if end >= frame_count:
+                break
 
     def _device(self) -> Any:
         torch = self._torch

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.retarget.legacy.bvh_exporter import main
+from src.retarget.fbx_exporter import main
 
 
 if __name__ == "__main__":

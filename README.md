@@ -251,8 +251,38 @@ python main.py input/dance.mp4 \
   --mesh-config MotionBERT/configs/mesh/MB_ft_pw3d.yaml \
   --mesh-checkpoint checkpoints/MotionBERT/FT_MB_release_MB_ft_pw3d/best_epoch.bin \
   --smpl-data-root checkpoints/Mesh \
+  --mesh-clip-len 243 \
+  --mesh-clip-stride 121 \
   --device cuda:0
 ```
+
+`--mesh-clip-stride` la so frame overlap giua hai mesh clip lien tiep. Vi du `--mesh-clip-len 243 --mesh-clip-stride 121` se cat clip cach nhau 122 frame va blend prediction o vung chong lan de giam giat o bien clip.
+
+### Export animated SMPL FBX for Unity
+
+Pipeline retarget moi dung Blender headless de bake truc tiep `smpl_theta.npy` len SMPL T-pose rig va xuat skeleton animation FBX:
+
+```bash
+python export_smpl_fbx.py \
+  --input-dir output/dance2 \
+  --base-fbx assets/retarget/smpl_base_tpose.fbx
+```
+
+Output mac dinh:
+
+```text
+output/dance2/retarget/animated_smpl.fbx
+```
+
+Neu Blender khong nam trong `PATH`, truyen executable tuyet doi:
+
+```bash
+python export_smpl_fbx.py \
+  --input-dir output/dance2 \
+  --blender /path/to/blender
+```
+
+BVH exporter van duoc giu lai de debug/inspect motion cu, nhung khong con la duong chinh cho Unity Mecanim.
 
 ## Device
 

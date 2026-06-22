@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 
-DEFAULT_SMPL_SKELETON_PATH = Path("configs/skeletons/smpl_skeleton.json")
+DEFAULT_SMPL_SKELETON_PATH = Path("configs/legacy/smpl_skeleton.json")
 
 
 @dataclass(frozen=True)

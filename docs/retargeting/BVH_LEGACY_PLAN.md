@@ -1,3 +1,5 @@
+> **Legacy:** Tài liệu này chỉ còn dùng để debug BVH. Pipeline chính: UNITY_MECANIM_PIPELINE.md.
+
 # Avatar Retargeting And Unity/Unreal Export Plan
 
 Muc tieu phase nay la bien output Human Mesh Recovery hien tai thanh animation co the gan len avatar rigged, sau do export sang Blender, Unity hoac Unreal de dung trong metaverse/virtual production/game prototype.
@@ -72,7 +74,7 @@ output/<video>/retarget/source_motion.npz
 Suggested module:
 
 ```text
-src/retarget/smpl_motion.py
+src/retarget/legacy/smpl_motion.py
 ```
 
 ## Phase 2: Define SMPL Skeleton
@@ -80,7 +82,7 @@ src/retarget/smpl_motion.py
 Create a canonical SMPL skeleton definition:
 
 ```text
-configs/skeletons/smpl_skeleton.json
+configs/legacy/smpl_skeleton.json
 ```
 
 It should contain:
@@ -109,13 +111,13 @@ Example structure:
 Output:
 
 ```text
-configs/skeletons/smpl_skeleton.json
+configs/legacy/smpl_skeleton.json
 ```
 
 Suggested module:
 
 ```text
-src/retarget/smpl_skeleton.py
+src/retarget/legacy/smpl_skeleton.py
 ```
 
 ## Phase 3: Export Source SMPL Motion To BVH
@@ -126,7 +128,7 @@ Input:
 
 ```text
 source_motion.npz
-configs/skeletons/smpl_skeleton.json
+configs/legacy/smpl_skeleton.json
 ```
 
 Tasks:
@@ -156,7 +158,7 @@ no major left/right inversion
 Suggested files:
 
 ```text
-src/retarget/bvh_exporter.py
+src/retarget/legacy/bvh_exporter.py
 export_smpl_bvh.py
 ```
 
