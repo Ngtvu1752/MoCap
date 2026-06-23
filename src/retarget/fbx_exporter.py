@@ -22,7 +22,7 @@ class BlenderExportConfig:
     blender_script: Path = DEFAULT_BLENDER_SCRIPT
     output: Path | None = None
     blender_executable: str = "blender"
-    root_scale: float = 0.001
+    root_scale: float = 0.1
 
 
 def export_animated_smpl_fbx(config: BlenderExportConfig) -> Path:
@@ -138,7 +138,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--blender-script", type=Path, default=DEFAULT_BLENDER_SCRIPT, help="Blender Python bake script.")
     parser.add_argument("--output", type=Path, default=None, help="Output FBX. Defaults to <input-dir>/retarget/animated_smpl.fbx.")
     parser.add_argument("--blender", default="blender", help="Blender executable name or absolute path.")
-    parser.add_argument("--root-scale", type=float, default=0.001, help="Scale from MotionBERT millimeters to Blender units.")
+    parser.add_argument("--root-scale", type=float, default=0.1, help="Scale from MotionBERT millimeters to the base rig centimeter units.")
     return parser.parse_args(argv)
 
 

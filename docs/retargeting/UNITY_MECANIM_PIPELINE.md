@@ -12,7 +12,9 @@ Quy trình chỉ cần 2 file chính từ kết quả của MotionBERT:
 
 smpl_theta.npy: (Kích thước T x 82) - Chứa 72 tham số xoay Axis-Angle của 24 khớp xương.
 
-smpl_joints3d.npy: (Kích thước T x 17 x 3) - Trích xuất tọa độ của khớp Pelvis (index 0) làm Root Translation.
+smpl_joints3d.npy: (Kích thước T x 17 x 3) - Tọa độ khớp 3D trong không gian crop của HMR. Pelvis (index 0) chỉ cung cấp chuyển động root tương đối còn giữ lại trong crop, không phải trajectory toàn cục trong cảnh.
+
+MotionBERT HMR chuẩn hóa crop theo từng frame và không dự đoán camera/global translation. Vì vậy FBX có thể giữ body motion và một phần pelvis motion, nhưng không thể tái tạo chính xác việc nhân vật đi xuyên qua khung hình chỉ từ `smpl_theta.npy` và `smpl_joints3d.npy`. Global locomotion cần một bước camera/trajectory recovery riêng.
 
 2. Mục Tiêu Đầu Ra (Target Outcome)
 

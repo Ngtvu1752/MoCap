@@ -45,14 +45,14 @@ class PipelineTriggerTests(unittest.TestCase):
             Path("joints.npy"),
             Path("animated.fbx"),
             fps=30.0,
-            root_scale=0.001,
+            root_scale=0.1,
         )
 
         self.assertEqual(command[:4], ["/usr/bin/blender", "--background", "--python", "script.py"])
         self.assertIn("--fps", command)
         self.assertIn("30", command)
         self.assertIn("--root-scale", command)
-        self.assertIn("0.001", command)
+        self.assertIn("0.1", command)
 
 
 if __name__ == "__main__":

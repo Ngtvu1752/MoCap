@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
 import bpy
 import numpy as np
-from mathutils import Matrix, Quaternion, Vector
+from mathutils import Quaternion, Vector
 
 
 BONE_PREFIX = "m_avg_"
@@ -17,8 +18,10 @@ SMPL_BONE_NAMES = (
     "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow", "L_Wrist", "R_Wrist", "L_Hand", "R_Hand",
 )
 
-# Source SMPL is Y-up. The base rig lives in Blender Z-up coordinates.
-SMPL_TO_BLENDER = Matrix(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)))
+# The MotionBERT renderer maps source points as (-x, -z, -y). The imported
+# SMPL armature already maps its local coordinates to Blender world as
+# (x, -z, y), so source motion needs this local 180-degree Z correction.
+SOURCE_TO_RIG_LOCAL = np.diag((-1.0, -1.0, 1.0)).astype(np.float32)
 
 
 def _script_args() -> list[str]:
@@ -35,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--joints", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fps", type=float, required=True)
-    parser.add_argument("--root-scale", type=float, default=0.001)
+    parser.add_argument("--root-scale", type=float, default=0.1)
     return parser.parse_args(_script_args())
 
 
@@ -114,12 +117,24 @@ def _continuous_quaternion(quaternion: Quaternion, previous: Quaternion | None) 
     return quaternion
 
 
+def _source_root_to_rig_local(quaternion: Quaternion) -> Quaternion:
+    correction = Quaternion(Vector((0.0, 0.0, 1.0)), math.pi)
+    return correction @ quaternion
+
+
+def _source_translation_to_rig_local(translation: np.ndarray) -> Vector:
+    converted = SOURCE_TO_RIG_LOCAL @ np.asarray(translation, dtype=np.float32)
+    return Vector(converted.tolist())
+
+
 def _set_scene_fps(fps: float) -> None:
     if fps <= 0:
         raise ValueError(f"Expected positive FPS, got {fps}.")
+    # FBX stores standard integer frame rates. Using fps_base for a fractional
+    # source rate makes Blender resample and can silently drop end frames.
     nominal = max(1, int(round(fps)))
     bpy.context.scene.render.fps = nominal
-    bpy.context.scene.render.fps_base = nominal / fps
+    bpy.context.scene.render.fps_base = 1.0
 
 
 def _bake_motion(
@@ -148,8 +163,7 @@ def _bake_motion(
         frame = frame_index + 1
         scene.frame_set(frame)
 
-        converted_translation = SMPL_TO_BLENDER @ Vector(root_translation[frame_index].tolist())
-        root_bone.location = converted_translation * root_scale
+        root_bone.location = _source_translation_to_rig_local(root_translation[frame_index]) * root_scale
         root_bone.keyframe_insert(data_path="location", frame=frame, group=ROOT_BONE_NAME)
 
         for joint_index, bone_name in enumerate(SMPL_BONE_NAMES):
@@ -157,8 +171,7 @@ def _bake_motion(
             bone.rotation_mode = "QUATERNION"
             quaternion = _axis_angle_quaternion(pose_axis_angle[frame_index, joint_index])
             if joint_index == 0:
-                root_matrix = SMPL_TO_BLENDER @ quaternion.to_matrix() @ SMPL_TO_BLENDER.transposed()
-                quaternion = root_matrix.to_quaternion()
+                quaternion = _source_root_to_rig_local(quaternion)
             quaternion = _continuous_quaternion(quaternion, previous_quaternions[joint_index])
             previous_quaternions[joint_index] = quaternion.copy()
             bone.rotation_quaternion = quaternion
@@ -170,9 +183,28 @@ def _bake_motion(
                 keyframe.interpolation = "LINEAR"
 
 
+def _set_export_rest_pose(armature) -> None:
+    # FBX Model transforms are taken from the current evaluated pose. Insert
+    # identity keys at frame 0, outside the exported frame range 1..T, so the
+    # skeleton keeps its T-pose rest while animation sampling remains unchanged.
+    scene = bpy.context.scene
+    scene.frame_set(0)
+    root_bone = armature.pose.bones[ROOT_BONE_NAME]
+    root_bone.location = Vector((0.0, 0.0, 0.0))
+    root_bone.keyframe_insert(data_path="location", frame=0, group=ROOT_BONE_NAME)
+    for bone_name in SMPL_BONE_NAMES:
+        bone = armature.pose.bones[BONE_PREFIX + bone_name]
+        bone.rotation_mode = "QUATERNION"
+        bone.rotation_quaternion = Quaternion((1.0, 0.0, 0.0, 0.0))
+        bone.keyframe_insert(data_path="rotation_quaternion", frame=0, group=bone.name)
+    scene.frame_set(0)
+    bpy.context.view_layer.update()
+
+
 def _export_fbx(armature, output_path: Path) -> None:
     output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    _set_export_rest_pose(armature)
     if bpy.context.object is not None and bpy.context.object.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
     bpy.ops.object.select_all(action="DESELECT")
