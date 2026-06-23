@@ -8,13 +8,15 @@ Thay vì tự xây dựng công cụ tính toán ma trận xoay bằng Python v�
 
 1. Dữ Liệu Nguồn (Từ MotionBERT)
 
-Quy trình chỉ cần 2 file chính từ kết quả của MotionBERT:
+Quy trình dùng 3 file chính từ kết quả của MotionBERT:
 
 smpl_theta.npy: (Kích thước T x 82) - Chứa 72 tham số xoay Axis-Angle của 24 khớp xương.
 
-smpl_joints3d.npy: (Kích thước T x 17 x 3) - Tọa độ khớp 3D trong không gian crop của HMR. Pelvis (index 0) chỉ cung cấp chuyển động root tương đối còn giữ lại trong crop, không phải trajectory toàn cục trong cảnh.
+smpl_joints3d.npy: (Kích thước T x 17 x 3) - Hình học H36M từ nhánh HMR, dùng để tự hiệu chỉnh scale và phát hiện foot contact.
 
-MotionBERT HMR chuẩn hóa crop theo từng frame và không dự đoán camera/global translation. Vì vậy FBX có thể giữ body motion và một phần pelvis motion, nhưng không thể tái tạo chính xác việc nhân vật đi xuyên qua khung hình chỉ từ `smpl_theta.npy` và `smpl_joints3d.npy`. Global locomotion cần một bước camera/trajectory recovery riêng.
+pose3d.npy: (Kích thước T x 17 x 3) - Cung cấp pelvis trajectory tương đối trong camera cho root locomotion.
+
+Exporter kết hợp rotation từ `smpl_theta.npy` với translation từ `pose3d.npy`. Khoảng cách vẫn là ước lượng monocular và giả định camera tĩnh; camera chuyển động cần camera-motion compensation riêng.
 
 2. Mục Tiêu Đầu Ra (Target Outcome)
 
@@ -29,6 +31,7 @@ Lưu ý: File này chỉ chứa khung xương SMPL đang chuyển động, khôn
 
 src/retarget/
   ├── fbx_exporter.py                 # Validate input và gọi Blender headless
+  ├── root_motion.py                  # Scale, filter và foot-contact cleanup
   └── blender/
       └── bake_smpl_fbx.py            # Script chạy bên trong Blender
 
@@ -38,6 +41,7 @@ assets/retarget/
 export_smpl_fbx.py                     # CLI chính
 
 output/<video>/retarget/
+  ├── root_trajectory.npy             # Root trajectory source-mm để debug
   └── animated_smpl.fbx               # Skeleton animation cho Unity Mecanim
 
 
@@ -55,7 +59,9 @@ Giai đoạn 2: Tự Động Hóa Backend (Automation)
 
 Xây dựng Python Trigger: Viết một hàm Python trên server sử dụng thư viện subprocess để kích hoạt giao diện dòng lệnh của Blender.
 
-Lệnh chuẩn: python export_smpl_fbx.py --input-dir output/dance2
+Lệnh chuẩn: `python export_smpl_fbx.py --input-dir output/dance2`
+
+Mặc định `--root-trajectory pose3d`. Có thể dùng `smpl` để kiểm tra hành vi cũ hoặc `zero` để xuất animation in-place. `--pose3d-scale-mm` cho phép override auto-scale khi biết tỷ lệ chính xác.
 
 Kiểm thử quy trình ngầm (Headless Test): Chạy thử quy trình từ đầu đến cuối mà không cần mở giao diện đồ họa. Đảm bảo file FBX được sinh ra có dung lượng hợp lý và chứa Keyframe.
 

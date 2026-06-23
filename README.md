@@ -260,7 +260,7 @@ python main.py input/dance.mp4 \
 
 ### Export animated SMPL FBX for Unity
 
-Pipeline retarget moi dung Blender headless de bake truc tiep `smpl_theta.npy` len SMPL T-pose rig va xuat skeleton animation FBX:
+Pipeline retarget dung rotation tu `smpl_theta.npy`, root trajectory tu `pose3d.npy`, va `smpl_joints3d.npy` de auto-scale/foot contact truoc khi Blender headless bake len SMPL T-pose rig:
 
 ```bash
 python export_smpl_fbx.py \
@@ -268,11 +268,16 @@ python export_smpl_fbx.py \
   --base-fbx assets/retarget/smpl_base_tpose.fbx
 ```
 
-Output mac dinh:
+Mac dinh `--root-trajectory pose3d`. Dung `--root-trajectory smpl` de debug hanh vi cu, hoac `zero` de xuat animation in-place. Co the override auto-scale bang `--pose3d-scale-mm FLOAT`.
+
+Output:
 
 ```text
+output/dance2/retarget/root_trajectory.npy
 output/dance2/retarget/animated_smpl.fbx
 ```
+
+Trong Unity, tat `Bake Into Pose` cho Root Transform Position (XZ) va bat `Apply Root Motion` tren Animator.
 
 Neu Blender khong nam trong `PATH`, truyen executable tuyet doi:
 

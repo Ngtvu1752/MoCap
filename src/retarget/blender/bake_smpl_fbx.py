@@ -35,25 +35,27 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bake MotionBERT SMPL motion onto the base SMPL FBX armature.")
     parser.add_argument("--base-fbx", type=Path, required=True)
     parser.add_argument("--theta", type=Path, required=True)
-    parser.add_argument("--joints", type=Path, required=True)
+    parser.add_argument("--root-translation", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fps", type=float, required=True)
     parser.add_argument("--root-scale", type=float, default=0.1)
     return parser.parse_args(_script_args())
 
 
-def _load_motion(theta_path: Path, joints_path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _load_motion(theta_path: Path, root_translation_path: Path) -> tuple[np.ndarray, np.ndarray]:
     theta = np.load(theta_path).astype(np.float32)
-    joints = np.load(joints_path).astype(np.float32)
+    root_translation = np.load(root_translation_path).astype(np.float32)
     if theta.ndim != 2 or theta.shape[1] != 82:
         raise ValueError(f"Expected theta shape (T,82), got {theta.shape}.")
-    if joints.ndim != 3 or joints.shape[1:] != (17, 3):
-        raise ValueError(f"Expected joints shape (T,17,3), got {joints.shape}.")
-    if theta.shape[0] != joints.shape[0] or theta.shape[0] == 0:
-        raise ValueError(f"Invalid frame counts: theta={theta.shape[0]}, joints={joints.shape[0]}.")
-    if not np.isfinite(theta).all() or not np.isfinite(joints).all():
+    if root_translation.ndim != 2 or root_translation.shape[1] != 3:
+        raise ValueError(f"Expected root translation shape (T,3), got {root_translation.shape}.")
+    if theta.shape[0] != root_translation.shape[0] or theta.shape[0] == 0:
+        raise ValueError(
+            f"Invalid frame counts: theta={theta.shape[0]}, root_translation={root_translation.shape[0]}."
+        )
+    if not np.isfinite(theta).all() or not np.isfinite(root_translation).all():
         raise ValueError("Motion arrays contain NaN or Inf values.")
-    return theta[:, :72].reshape(-1, 24, 3), joints[:, 0, :] - joints[0:1, 0, :]
+    return theta[:, :72].reshape(-1, 24, 3), root_translation
 
 
 def _clear_scene() -> None:
@@ -233,7 +235,7 @@ def _export_fbx(armature, output_path: Path) -> None:
 
 def main() -> None:
     args = parse_args()
-    pose_axis_angle, root_translation = _load_motion(args.theta, args.joints)
+    pose_axis_angle, root_translation = _load_motion(args.theta, args.root_translation)
     _clear_scene()
     armature = _import_armature(args.base_fbx)
     bpy.context.view_layer.objects.active = armature
