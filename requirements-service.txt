@@ -1,0 +1,8 @@
+# Service/API dependencies for the offline FBX generation service.
+# Install after the main MoCap environment in INSTALL.md is ready.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+redis==5.2.1
+rq==2.1.0
+

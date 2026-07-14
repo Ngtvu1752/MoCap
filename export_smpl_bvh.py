@@ -1,7 +1,0 @@
-from __future__ import annotations
-
-from src.retarget.legacy.bvh_exporter import main
-
-
-if __name__ == "__main__":
-    main()

@@ -1,0 +1,48 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.service
+    env_file:
+      - ../.env.docker.example
+    command: python3 -m service.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../service_data:/workspace/MoCap/service_data
+      - ../checkpoints:/workspace/MoCap/checkpoints:ro
+      - ../MotionBERT:/workspace/MoCap/MotionBERT:ro
+      - ../assets:/workspace/MoCap/assets:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.service
+    env_file:
+      - ../.env.docker.example
+    command: python3 -m service.worker
+    volumes:
+      - ../service_data:/workspace/MoCap/service_data
+      - ../checkpoints:/workspace/MoCap/checkpoints:ro
+      - ../MotionBERT:/workspace/MoCap/MotionBERT:ro
+      - ../assets:/workspace/MoCap/assets:ro
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+

@@ -3,13 +3,23 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from src.mesh.motionbert_mesh_estimator import MotionBERTMeshEstimator
-from src.mesh.smpl_mesh_renderer import SMPLMeshRenderer
-from src.pipeline import MocapPipeline, PipelineConfig
-from src.pose2d.rtmpose_estimator import RTMPoseEstimator
-from src.pose3d.adapters import KeypointFormat, Pose2DFormatConverter
-from src.pose3d.motionbert_estimator import MotionBERTEstimator
-from src.renderer.mesh_renderer import SkeletonRenderer
+from src.pipeline import PipelineConfig
+from src.pipeline_defaults import (
+    DEFAULT_DEVICE,
+    DEFAULT_MESH_CHECKPOINT,
+    DEFAULT_MESH_CLIP_LEN,
+    DEFAULT_MESH_CLIP_STRIDE,
+    DEFAULT_MESH_CONFIG,
+    DEFAULT_MOTIONBERT_REPO,
+    DEFAULT_POSE2D_CHECKPOINT,
+    DEFAULT_POSE2D_CONFIG,
+    DEFAULT_POSE2D_FORMAT,
+    DEFAULT_POSE3D_CHECKPOINT,
+    DEFAULT_POSE3D_CONFIG,
+    DEFAULT_SMPL_DATA_ROOT,
+    SUPPORTED_POSE2D_FORMATS,
+)
+from src.pipeline_factory import create_mocap_pipeline
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,22 +43,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--pose2d-format",
-        choices=["whole_body133", "coco_body17", "halpe26"],
-        default="whole_body133",
+        choices=SUPPORTED_POSE2D_FORMATS,
+        default=DEFAULT_POSE2D_FORMAT,
         help="RTMPose keypoint layout emitted by the 2D model",
     )
     parser.add_argument(
         "--pose2d-config",
         type=Path,
-        default=Path("checkpoints/rtmpose-m_8xb64-270e_coco-wholebody-256x192.py"),
+        default=DEFAULT_POSE2D_CONFIG,
         help="RTMPose config file path",
     )
     parser.add_argument(
         "--pose2d-checkpoint",
         type=Path,
-        default=Path(
-            "checkpoints/rtmpose-m_simcc-coco-wholebody_pt-aic-coco_270e-256x192-cd5e845c_20230123.pth"
-        ),
+        default=DEFAULT_POSE2D_CHECKPOINT,
         help="RTMPose checkpoint .pth path",
     )
     parser.add_argument(
@@ -59,19 +67,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--motionbert-repo",
         type=Path,
-        default=Path("MotionBERT"),
+        default=DEFAULT_MOTIONBERT_REPO,
         help="MotionBERT repository path",
     )
     parser.add_argument(
         "--pose3d-config",
         type=Path,
-        default=Path("MotionBERT/configs/pose3d/MB_ft_h36m_global_lite.yaml"),
+        default=DEFAULT_POSE3D_CONFIG,
         help="MotionBERT pose3d config file path",
     )
     parser.add_argument(
         "--pose3d-checkpoint",
         type=Path,
-        default=Path("checkpoints/MotionBERT/FT_MB_lite_MB_ft_h36m_global_lite/best_epoch.bin"),
+        default=DEFAULT_POSE3D_CHECKPOINT,
         help="MotionBERT pose3d checkpoint .bin path",
     )
     parser.add_argument(
@@ -82,19 +90,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mesh-config",
         type=Path,
-        default=Path("MotionBERT/configs/mesh/MB_ft_pw3d.yaml"),
+        default=DEFAULT_MESH_CONFIG,
         help="MotionBERT mesh config file path",
     )
     parser.add_argument(
         "--mesh-checkpoint",
         type=Path,
-        default=Path("checkpoints/MotionBERT/FT_MB_release_MB_ft_pw3d/best_epoch.bin"),
+        default=DEFAULT_MESH_CHECKPOINT,
         help="MotionBERT mesh checkpoint .bin path",
     )
     parser.add_argument(
         "--smpl-data-root",
         type=Path,
-        default=Path("checkpoints/Mesh"),
+        default=DEFAULT_SMPL_DATA_ROOT,
         help="Directory containing SMPL_NEUTRAL.pkl and MotionBERT mesh regressor assets",
     )
     parser.add_argument(
@@ -105,13 +113,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mesh-clip-len",
         type=int,
-        default=None,
-        help="Optional override for MotionBERT mesh clip length.",
+        default=DEFAULT_MESH_CLIP_LEN,
+        help="MotionBERT mesh clip length.",
     )
     parser.add_argument(
         "--mesh-clip-stride",
         type=int,
-        default=None,
+        default=DEFAULT_MESH_CLIP_STRIDE,
         help=(
             "Number of overlapping frames between adjacent MotionBERT mesh clips. "
             "For example, with --mesh-clip-len 243 and --mesh-clip-stride 121, "
@@ -120,7 +128,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--device",
-        default="cuda:0",
+        default=DEFAULT_DEVICE,
         help="Inference device, for example cuda:0 or cpu",
     )
     return parser.parse_args()
@@ -128,51 +136,28 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    pose2d_format = KeypointFormat(args.pose2d_format)
-
-    human_mesh_estimator = None
-    human_mesh_renderer = None
-    if args.human_mesh:
-        human_mesh_estimator = MotionBERTMeshEstimator(
-            repo_path=args.motionbert_repo,
-            config_path=args.mesh_config,
-            checkpoint_path=args.mesh_checkpoint,
-            smpl_data_root=args.smpl_data_root,
-            source_format=pose2d_format,
-            device=args.device,
-            clip_len=args.mesh_clip_len,
-            clip_stride=args.mesh_clip_stride,
-        )
-        if not args.skip_human_mesh_render:
-            human_mesh_renderer = SMPLMeshRenderer()
-
-    pipeline = MocapPipeline(
-        config=PipelineConfig(
+    pipeline = create_mocap_pipeline(
+        PipelineConfig(
             video_path=args.video,
             output_dir=args.output_dir,
             metadata_only=args.metadata_only,
             pose2d_only=args.pose2d_only,
             pose3d_only=args.pose3d_only,
             human_mesh=args.human_mesh,
-        ),
-        pose2d_estimator=RTMPoseEstimator(
-            config_path=args.pose2d_config,
-            checkpoint_path=args.pose2d_checkpoint,
+            render_human_mesh=not args.skip_human_mesh_render,
+            pose2d_format=args.pose2d_format,
+            pose2d_config_path=args.pose2d_config,
+            pose2d_checkpoint_path=args.pose2d_checkpoint,
+            motionbert_repo=args.motionbert_repo,
+            pose3d_config_path=args.pose3d_config,
+            pose3d_checkpoint_path=args.pose3d_checkpoint,
+            mesh_config_path=args.mesh_config,
+            mesh_checkpoint_path=args.mesh_checkpoint,
+            smpl_data_root=args.smpl_data_root,
+            mesh_clip_len=args.mesh_clip_len,
+            mesh_clip_stride=args.mesh_clip_stride,
             device=args.device,
-        ),
-        pose_converter=Pose2DFormatConverter(
-            source_format=pose2d_format,
-            target_format=KeypointFormat.HUMAN36M_17,
-        ),
-        pose3d_estimator=MotionBERTEstimator(
-            repo_path=args.motionbert_repo,
-            config_path=args.pose3d_config,
-            checkpoint_path=args.pose3d_checkpoint,
-            device=args.device,
-        ),
-        renderer=SkeletonRenderer(),
-        human_mesh_estimator=human_mesh_estimator,
-        human_mesh_renderer=human_mesh_renderer,
+        )
     )
 
     result = pipeline.run()

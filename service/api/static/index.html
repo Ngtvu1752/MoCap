@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoCap FBX Service</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #19212a;
+      --muted: #637083;
+      --line: #d7dee8;
+      --accent: #0f766e;
+      --accent-dark: #115e59;
+      --danger: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(980px, calc(100% - 32px)); margin: 32px auto; }
+    header { margin-bottom: 20px; }
+    h1 { margin: 0 0 6px; font-size: clamp(28px, 4vw, 42px); line-height: 1.1; letter-spacing: 0; }
+    p { margin: 0; color: var(--muted); }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    h2 { margin: 0 0 14px; font-size: 18px; letter-spacing: 0; }
+    form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    label { display: grid; gap: 6px; font-weight: 650; }
+    label.full { grid-column: 1 / -1; }
+    input, select, button {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 11px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+    }
+    input[type="file"] { padding: 7px; }
+    button { border-color: var(--accent); background: var(--accent); color: white; font-weight: 750; cursor: pointer; }
+    button:hover { background: var(--accent-dark); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .actions { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .status-line { padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfe; min-height: 48px; }
+    .error { color: var(--danger); }
+    .links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .links a { color: var(--accent-dark); font-weight: 700; }
+    .demo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .viewer { display: grid; gap: 8px; }
+    .viewer h3 { margin: 0; font-size: 15px; letter-spacing: 0; }
+    video { width: 100%; aspect-ratio: 16 / 9; background: #0f172a; border: 1px solid var(--line); border-radius: 6px; }
+    .note { margin-top: 10px; color: var(--muted); }
+    pre { overflow: auto; max-height: 360px; padding: 12px; background: #111827; color: #e5e7eb; border-radius: 6px; font-size: 13px; }
+    @media (max-width: 720px) {
+      form { grid-template-columns: 1fr; }
+      .demo-grid { grid-template-columns: 1fr; }
+      main { width: min(100% - 20px, 980px); margin-top: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>MoCap FBX Service</h1>
+      <p>Upload a single-person video and generate an animated SMPL FBX for Unity retargeting.</p>
+    </header>
+
+    <section>
+      <h2>Create Job</h2>
+      <form id="jobForm">
+        <label class="full">
+          API Key
+          <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="X-API-Key">
+        </label>
+        <label class="full">
+          Video
+          <input id="video" name="video" type="file" accept=".mp4,.mov,.mkv,video/*" required>
+        </label>
+        <label>
+          Mesh clip length
+          <input id="meshClipLen" name="mesh_clip_len" type="number" min="1" value="243">
+        </label>
+        <label>
+          Mesh clip stride
+          <input id="meshClipStride" name="mesh_clip_stride" type="number" min="0" value="121">
+        </label>
+        <label>
+          Root trajectory
+          <select id="rootTrajectory" name="root_trajectory">
+            <option value="pose3d" selected>pose3d</option>
+            <option value="smpl">smpl</option>
+            <option value="zero">zero</option>
+          </select>
+        </label>
+        <label>
+          Pose2D format
+          <select id="pose2dFormat" name="pose2d_format">
+            <option value="halpe26" selected>halpe26</option>
+            <option value="whole_body133">whole_body133</option>
+            <option value="coco_body17">coco_body17</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="submitBtn" type="submit">Upload And Generate FBX</button>
+          <span id="hint">Max default: 5 minutes, 1920x1080.</span>
+        </div>
+      </form>
+    </section>
+
+    <section>
+      <h2>Job Status</h2>
+      <div id="status" class="status-line">No job submitted yet.</div>
+      <div id="links" class="links"></div>
+      <pre id="details" hidden></pre>
+    </section>
+
+    <section id="demoSection" hidden>
+      <h2>Demo Review</h2>
+      <div class="demo-grid">
+        <div class="viewer">
+          <h3>Source video</h3>
+          <video id="sourceVideo" controls playsinline></video>
+        </div>
+        <div class="viewer">
+          <h3>SMPL FBX preview</h3>
+          <video id="previewVideo" controls playsinline></video>
+        </div>
+      </div>
+      <p class="note">This preview is rendered from the exported SMPL FBX skeleton. Target-avatar retargeting is intentionally not part of this service.</p>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("jobForm");
+    const apiKey = document.getElementById("apiKey");
+    const submitBtn = document.getElementById("submitBtn");
+    const statusBox = document.getElementById("status");
+    const linksBox = document.getElementById("links");
+    const detailsBox = document.getElementById("details");
+    const demoSection = document.getElementById("demoSection");
+    const sourceVideo = document.getElementById("sourceVideo");
+    const previewVideo = document.getElementById("previewVideo");
+    const mediaUrls = [];
+    let pollTimer = null;
+    let currentJobId = null;
+
+    function headers() { return {"X-API-Key": apiKey.value}; }
+
+    function setStatus(text, isError = false) {
+      statusBox.textContent = text;
+      statusBox.className = isError ? "status-line error" : "status-line";
+    }
+
+    function setDetails(payload) {
+      detailsBox.hidden = false;
+      detailsBox.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function downloadLink(path, label) {
+      const url = `/v1/jobs/${currentJobId}/${path}`;
+      return `<a href="${url}" onclick="event.preventDefault(); downloadArtifact('${url}')">${label}</a>`;
+    }
+
+    function clearDemoMedia() {
+      demoSection.hidden = true;
+      for (const url of mediaUrls.splice(0)) URL.revokeObjectURL(url);
+      sourceVideo.removeAttribute("src");
+      previewVideo.removeAttribute("src");
+      sourceVideo.load();
+      previewVideo.load();
+    }
+
+    async function setVideoSource(videoElement, url) {
+      const response = await fetch(url, {headers: headers()});
+      if (!response.ok) throw new Error(await response.text());
+      const objectUrl = URL.createObjectURL(await response.blob());
+      mediaUrls.push(objectUrl);
+      videoElement.src = objectUrl;
+      videoElement.load();
+    }
+
+    async function loadDemoMedia() {
+      if (!currentJobId) return;
+      clearDemoMedia();
+      demoSection.hidden = false;
+      await setVideoSource(sourceVideo, `/v1/jobs/${currentJobId}/download/source`);
+      try {
+        await setVideoSource(previewVideo, `/v1/jobs/${currentJobId}/download/preview`);
+      } catch (error) {
+        setStatus(`Job ${currentJobId}: done, but preview video is not available.`, true);
+      }
+    }
+
+    async function downloadArtifact(url) {
+      const response = await fetch(url, {headers: headers()});
+      if (!response.ok) {
+        setStatus(await response.text(), true);
+        return;
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") || "";
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match ? match[1] : url.split("/").pop();
+      const anchor = document.createElement("a");
+      anchor.href = URL.createObjectURL(blob);
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      URL.revokeObjectURL(anchor.href);
+      anchor.remove();
+    }
+
+    window.downloadArtifact = downloadArtifact;
+
+    async function pollJob() {
+      if (!currentJobId) return;
+      const response = await fetch(`/v1/jobs/${currentJobId}`, {headers: headers()});
+      const payload = await response.json();
+      if (!response.ok) {
+        setStatus(payload.detail || "Could not read job status.", true);
+        clearInterval(pollTimer);
+        return;
+      }
+      setDetails(payload);
+      const percent = Math.round((payload.progress || 0) * 100);
+      setStatus(`Job ${payload.job_id}: ${payload.status} (${percent}%)`);
+      if (payload.status === "done") {
+        clearInterval(pollTimer);
+        linksBox.innerHTML = [
+          downloadLink("download/fbx", "Download SMPL FBX"),
+          downloadLink("report", "Download report"),
+          downloadLink("download/source", "Download source"),
+          downloadLink("download/preview", "Download SMPL preview")
+        ].join("");
+        loadDemoMedia().catch((error) => setStatus(String(error), true));
+      }
+      if (["failed", "expired", "canceled"].includes(payload.status)) {
+        clearInterval(pollTimer);
+        linksBox.innerHTML = downloadLink("report", "Download report");
+        setStatus(`Job ${payload.job_id}: ${payload.status}. ${payload.error || ""}`, true);
+      }
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      linksBox.innerHTML = "";
+      detailsBox.hidden = true;
+      clearDemoMedia();
+      if (!apiKey.value) {
+        setStatus("API key is required.", true);
+        return;
+      }
+      const file = document.getElementById("video").files[0];
+      if (!file) {
+        setStatus("Video is required.", true);
+        return;
+      }
+      const data = new FormData();
+      data.append("video", file);
+      data.append("profile", "unity_humanoid_fbx");
+      data.append("pose2d_format", document.getElementById("pose2dFormat").value);
+      data.append("mesh_clip_len", document.getElementById("meshClipLen").value);
+      data.append("mesh_clip_stride", document.getElementById("meshClipStride").value);
+      data.append("root_trajectory", document.getElementById("rootTrajectory").value);
+
+      submitBtn.disabled = true;
+      setStatus("Uploading video...");
+      try {
+        const response = await fetch("/v1/jobs", {method: "POST", headers: headers(), body: data});
+        const payload = await response.json();
+        if (!response.ok) {
+          setStatus(payload.detail || "Upload failed.", true);
+          return;
+        }
+        currentJobId = payload.job_id;
+        setDetails(payload);
+        setStatus(`Job ${currentJobId}: queued`);
+        clearInterval(pollTimer);
+        pollTimer = setInterval(pollJob, 3000);
+        await pollJob();
+      } catch (error) {
+        setStatus(String(error), true);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -77,7 +77,7 @@ Giai đoạn 3: Tích Hợp Unity (Unity Mecanim Retargeting)
 
 So với kế hoạch cũ, các hạng mục sau đây đã bị loại bỏ vì Unity Mecanim đã tự động giải quyết:
 
-⚠️ BVH exporter được chuyển vào src/retarget/legacy/ và chỉ dùng để debug.
+⚠️ BVH exporter đã được gỡ khỏi `/MoCap`; pipeline hiện tại chỉ duy trì hướng FBX qua Blender cho retarget/avatar playback.
 
 ❌ Xóa retarget_solver.py (Không cần tự code thuật toán ánh xạ).
 

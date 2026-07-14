@@ -5,13 +5,12 @@ from typing import Any
 
 import numpy as np
 
+from src.pipeline_defaults import DEFAULT_POSE2D_CHECKPOINT, DEFAULT_POSE2D_CONFIG
 from src.pose2d.base import Pose2DEstimator, Pose2DResult
 
 
-DEFAULT_CONFIG_PATH = Path("/workspace/MoCap/checkpoints/body_2d_keypoint/rtmpose-m_8xb512-700e_body8-halpe26-384x288.py")
-DEFAULT_CHECKPOINT_PATH = Path(
-    "/workspace/MoCap/checkpoints/body_2d_keypoint/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-384x288-89e6428b_20230605.pth"
-)
+DEFAULT_CONFIG_PATH = DEFAULT_POSE2D_CONFIG
+DEFAULT_CHECKPOINT_PATH = DEFAULT_POSE2D_CHECKPOINT
 
 
 class RTMPoseEstimator(Pose2DEstimator):
@@ -78,7 +77,7 @@ class RTMPoseEstimator(Pose2DEstimator):
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 "MMPose is required for RTMPose inference. Install MMPose/MMCV/MMEngine "
-                "in this environment before running Phase 2."
+                "in this environment before running 2D pose inference."
             ) from exc
 
         register_all_modules()

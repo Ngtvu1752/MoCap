@@ -1,5 +1,15 @@
 # MoCap Demo: Video to 3D Skeleton Pipeline
 
+## Offline FBX Service
+
+Repo nay co them MVP service noi bo de upload video va nhan output `animated_smpl.fbx` source SMPL. Service khong bake truc tiep sang avatar Mixamo/Ch36. Xem chi tiet tai `docs/OFFLINE_FBX_SERVICE.md`.
+
+```bash
+python -m service.doctor
+python -m service.api
+python -m service.worker
+```
+
 Demo pipeline chuyen video mot nguoi thanh chuoi 2D pose, 3D pose va video render skeleton and optional SMPL human mesh.
 
 Pipeline hien tai:
@@ -287,7 +297,7 @@ python export_smpl_fbx.py \
   --blender /path/to/blender
 ```
 
-BVH exporter van duoc giu lai de debug/inspect motion cu, nhung khong con la duong chinh cho Unity Mecanim.
+BVH exporter da duoc go khoi repo de giam legacy surface; duong export chinh hien tai la FBX/GLB qua Blender.
 
 ## Device
 

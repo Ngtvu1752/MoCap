@@ -1,4 +1,6 @@
 /output
+/service_data
+dump.rdb
 /venv
 __pycache__/
 *.pyc
